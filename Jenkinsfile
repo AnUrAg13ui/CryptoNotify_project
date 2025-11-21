@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = "localhost:5000"
+        REGISTRY = "172.17.0.1:5000"
         IMAGE = "${REGISTRY}/myapp:latest"
         CREDS = credentials('nexus-creds')
     }
