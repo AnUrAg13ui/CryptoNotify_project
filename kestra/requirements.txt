@@ -1,0 +1,5 @@
+requests
+pymongo
+python-dateutil
+urllib3
+python-dotenv
