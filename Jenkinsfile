@@ -11,7 +11,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/AnUrAg13ui/CryptoNotify_project.git'
+                git branch: 'master', url: 'https://github.com/AnUrAg13ui/CryptoNotify_project.git'
             }
         }
 
@@ -32,7 +32,7 @@ pipeline {
                 docker pull ${IMAGE}
                 docker stop app || true
                 docker rm app || true
-                docker run -d --name app -p 80:80 ${IMAGE}
+                docker run -d --name app -p 80:3000 ${IMAGE}
                 """
             }
         }
