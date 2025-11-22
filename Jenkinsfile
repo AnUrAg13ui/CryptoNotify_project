@@ -1,39 +1,30 @@
 pipeline {
     agent any
 
-    environment {
-        REGISTRY = "172.17.0.1:5000"
-        IMAGE = "${REGISTRY}/myapp:latest"
-        CREDS = credentials('nexus-creds')
-    }
-
     stages {
-
-        stage('Checkout') {
+        stage('Pull Code') {
             steps {
-                git branch: 'master', url: 'https://github.com/AnUrAg13ui/CryptoNotify_project.git'
+                git branch: 'master',
+                    url: 'https://github.com/AnUrAg13ui/CryptoNotify_project.git'
             }
         }
 
-        stage('Build & Push Image') {
+        stage('Build Docker Image') {
             steps {
-                sh """
-                echo ${CREDS_PSW} | docker login ${REGISTRY} -u ${CREDS_USR} --password-stdin
-                docker build -t ${IMAGE} .
-                docker push ${IMAGE}
-                """
+                sh 'docker build -t cryptopulse .'
             }
         }
 
-        stage('Deploy on Same EC2') {
+        stage('Stop Old Container') {
             steps {
-                sh """
-                docker login ${REGISTRY} -u ${CREDS_USR} -p ${CREDS_PSW}
-                docker pull ${IMAGE}
-                docker stop app || true
-                docker rm app || true
-                docker run -d --name app -p 80:3000 ${IMAGE}
-                """
+                sh 'docker stop cryptopulse || true'
+                sh 'docker rm cryptopulse || true'
+            }
+        }
+
+        stage('Run New Container') {
+            steps {
+                sh 'docker run -d --name cryptopulse -p 3000:3000 --env-file .env cryptopulse'
             }
         }
     }
