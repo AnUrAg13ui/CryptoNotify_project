@@ -6,11 +6,9 @@ pipeline {
             yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    jenkins/label: my-jenkins-jenkins-agent
 spec:
   serviceAccountName: default
+
   containers:
   - name: node
     image: node:18
@@ -28,16 +26,30 @@ spec:
     volumeMounts:
       - name: docker-graph-storage
         mountPath: /var/lib/docker
+      - mountPath: "/home/jenkins/agent"
+        name: "workspace-volume"
+
+  - name: sonar
+    image: sonarsource/sonar-scanner-cli:latest
+    command: ['cat']
+    tty: true
+    volumeMounts:
+      - mountPath: "/home/jenkins/agent"
+        name: "workspace-volume"
 
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+    args: ['$(JENKINS_SECRET)', '$(JENKINS_NAME)']
+    volumeMounts:
+      - mountPath: "/home/jenkins/agent"
+        name: "workspace-volume"
 
   volumes:
   - name: docker-graph-storage
     emptyDir: {}
   - name: workspace-volume
     emptyDir: {}
+
 """
         }
     }
@@ -68,7 +80,7 @@ spec:
 
         stage('SonarQube Scan') {
             steps {
-                container('node') {
+                container('sonar') {
                     withSonarQubeEnv("${SONARQUBE}") {
                         sh """
                             sonar-scanner \
