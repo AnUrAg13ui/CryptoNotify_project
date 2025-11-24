@@ -1,5 +1,46 @@
 pipeline {
-    agent any
+
+    agent {
+        kubernetes {
+            defaultContainer 'node'
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins/label: my-jenkins-jenkins-agent
+spec:
+  serviceAccountName: default
+  containers:
+  - name: node
+    image: node:18
+    command: ['cat']
+    tty: true
+    volumeMounts:
+      - mountPath: "/home/jenkins/agent"
+        name: "workspace-volume"
+
+  - name: dind
+    image: docker:dind
+    securityContext:
+      privileged: true
+    command: ["dockerd-entrypoint.sh"]
+    volumeMounts:
+      - name: docker-graph-storage
+        mountPath: /var/lib/docker
+
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+
+  volumes:
+  - name: docker-graph-storage
+    emptyDir: {}
+  - name: workspace-volume
+    emptyDir: {}
+"""
+        }
+    }
 
     environment {
         IMAGE_NAME = "cryptonotify"
@@ -18,37 +59,46 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                container('node') {
+                    sh 'npm install'
+                    sh 'npm run build'
+                }
             }
         }
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv("${SONARQUBE}") {
-                    sh """
-                        sonar-scanner \
-                        -Dsonar.projectKey=cryptonotify \
-                        -Dsonar.sources=. \
-                        -Dsonar.host.url=http://sonarqube.imcc.com \
-                        -Dsonar.login=$SONAR_TOKEN
-                    """
+                container('node') {
+                    withSonarQubeEnv("${SONARQUBE}") {
+                        sh """
+                            sonar-scanner \
+                              -Dsonar.projectKey=cryptonotify \
+                              -Dsonar.sources=. \
+                              -Dsonar.host.url=http://sonarqube.imcc.com \
+                              -Dsonar.login=$SONAR_TOKEN
+                        """
+                    }
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:latest ."
+                container('dind') {
+                    sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:latest ."
+                }
             }
         }
 
         stage('Push to Nexus') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh """
-                        docker login ${REGISTRY} -u $USER -p $PASS
-                        docker push ${REGISTRY}/${IMAGE_NAME}:latest
-                    """
+                container('dind') {
+                    withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        sh """
+                            docker login ${REGISTRY} -u $USER -p $PASS
+                            docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                        """
+                    }
                 }
             }
         }
