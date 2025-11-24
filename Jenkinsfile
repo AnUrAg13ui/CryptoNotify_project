@@ -10,6 +10,7 @@ spec:
   serviceAccountName: default
 
   containers:
+  # Node container for npm install + next build
   - name: node
     image: node:18
     command: ['cat']
@@ -18,17 +19,19 @@ spec:
       - mountPath: "/home/jenkins/agent"
         name: "workspace-volume"
 
+  # Docker-in-Docker for docker build + push
   - name: dind
     image: docker:dind
     securityContext:
       privileged: true
     command: ["dockerd-entrypoint.sh"]
     volumeMounts:
-      - name: docker-graph-storage
-        mountPath: /var/lib/docker
+      - mountPath: "/var/lib/docker"
+        name: docker-graph-storage
       - mountPath: "/home/jenkins/agent"
-        name: "workspace-volume"
+        name: workspace-volume
 
+  # SonarScanner container
   - name: sonar
     image: sonarsource/sonar-scanner-cli:latest
     command: ['cat']
@@ -37,9 +40,10 @@ spec:
       - mountPath: "/home/jenkins/agent"
         name: "workspace-volume"
 
+  # Jenkins JNLP agent connector
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args: ['$(JENKINS_SECRET)', '$(JENKINS_NAME)']
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
     volumeMounts:
       - mountPath: "/home/jenkins/agent"
         name: "workspace-volume"
@@ -49,7 +53,6 @@ spec:
     emptyDir: {}
   - name: workspace-volume
     emptyDir: {}
-
 """
         }
     }
