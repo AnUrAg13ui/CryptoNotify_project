@@ -1,66 +1,55 @@
 pipeline {
-
     agent {
         kubernetes {
-            defaultContainer 'node'
             yaml """
 apiVersion: v1
 kind: Pod
 spec:
-  serviceAccountName: default
+  hostAliases:
+  - ip: "192.168.20.250"
+    hostnames:
+      - "sonarqube.imcc.com"
 
   containers:
-  # Node container for npm install + next build
   - name: node
     image: node:18
     command: ['cat']
     tty: true
     volumeMounts:
-      - mountPath: "/home/jenkins/agent"
-        name: "workspace-volume"
+    - mountPath: "/home/jenkins/agent"
+      name: "workspace-volume"
 
-  # Docker-in-Docker for docker build + push
-  - name: dind
-    image: docker:dind
-    securityContext:
-      privileged: true
-    command: ["dockerd-entrypoint.sh"]
-    volumeMounts:
-      - mountPath: "/var/lib/docker"
-        name: docker-graph-storage
-      - mountPath: "/home/jenkins/agent"
-        name: workspace-volume
-
-  # SonarScanner container
   - name: sonar
     image: sonarsource/sonar-scanner-cli:latest
     command: ['cat']
     tty: true
     volumeMounts:
-      - mountPath: "/home/jenkins/agent"
-        name: "workspace-volume"
+    - mountPath: "/home/jenkins/agent"
+      name: "workspace-volume"
 
-  # Jenkins JNLP agent connector
-  - name: jnlp
-    image: jenkins/inbound-agent:latest
-    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+  - name: dind
+    image: docker:dind
+    securityContext:
+      privileged: true
     volumeMounts:
-      - mountPath: "/home/jenkins/agent"
-        name: "workspace-volume"
+    - mountPath: "/var/lib/docker"
+      name: docker-graph-storage
+    - mountPath: "/home/jenkins/agent"
+      name: workspace-volume
 
   volumes:
   - name: docker-graph-storage
     emptyDir: {}
   - name: workspace-volume
     emptyDir: {}
-"""
+
+            """
         }
     }
 
     environment {
         IMAGE_NAME = "cryptonotify"
         REGISTRY = "nexus.imcc.com:8082"
-        SONARQUBE = "sonar-server"
         SONAR_TOKEN = credentials('sonar-token-2401059')
     }
 
@@ -84,15 +73,13 @@ spec:
         stage('SonarQube Scan') {
             steps {
                 container('sonar') {
-                    withSonarQubeEnv("${SONARQUBE}") {
-                        sh """
-                            sonar-scanner \
-                              -Dsonar.projectKey=cryptonotify \
-                              -Dsonar.sources=. \
-                              -Dsonar.host.url=http://sonarqube.imcc.com \
-                              -Dsonar.login=$SONAR_TOKEN
-                        """
-                    }
+                    sh """
+                        sonar-scanner \
+                        -Dsonar.projectKey=cryptonotify \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=http://sonarqube.imcc.com \
+                        -Dsonar.login=$SONAR_TOKEN
+                    """
                 }
             }
         }
@@ -107,8 +94,8 @@ spec:
 
         stage('Push to Nexus') {
             steps {
-                container('dind') {
-                    withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    container('dind') {
                         sh """
                             docker login ${REGISTRY} -u $USER -p $PASS
                             docker push ${REGISTRY}/${IMAGE_NAME}:latest
@@ -122,12 +109,12 @@ spec:
             steps {
                 sshagent(credentials: ['server-ssh']) {
                     sh '''
-                    ssh root@192.168.20.250 "
-                        docker pull nexus.imcc.com:8082/cryptonotify:latest &&
-                        docker stop cryptonotify || true &&
-                        docker rm cryptonotify || true &&
-                        docker run -d --name cryptonotify -p 3000:3000 nexus.imcc.com:8082/cryptonotify:latest
-                    "
+                        ssh root@192.168.20.250 "
+                            docker pull nexus.imcc.com:8082/cryptonotify:latest &&
+                            docker stop cryptonotify || true &&
+                            docker rm cryptonotify || true &&
+                            docker run -d --name cryptonotify -p 3000:3000 nexus.imcc.com:8082/cryptonotify:latest
+                        "
                     '''
                 }
             }
@@ -135,11 +122,7 @@ spec:
     }
 
     post {
-        success {
-            echo "🔥 Deployment Successful: CryptoNotify is Live!"
-        }
-        failure {
-            echo "❌ Build Failed — Check Logs!"
-        }
+        success { echo "🔥 Deployment Successful! CryptoNotify is Live." }
+        failure { echo "❌ Build Failed — Check Logs!" }
     }
 }
